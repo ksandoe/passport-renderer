@@ -1,4 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+import Paper from '@mui/material/Paper';
 
 /**
  * PresenceTile: Shows a live webcam preview for perceived monitoring.
@@ -58,29 +61,51 @@ const PresenceTile: React.FC<PresenceTileProps> = ({ onBlocked, onGranted, camer
   }, [stream, onGranted, onBlocked, cameraGranted]);
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="w-[160px] h-[120px] bg-black rounded overflow-hidden flex items-center justify-center">
+    <Box display="flex" flexDirection="column" alignItems="center">
+      <Paper
+        elevation={3}
+        sx={{
+          width: 160,
+          height: 120,
+          bgcolor: 'black',
+          borderRadius: 2,
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
         {stream ? (
           <video
             ref={videoRef}
             autoPlay
             muted
             playsInline
-            className="rounded-md border border-gray-300 w-[150px] h-[110px] object-cover bg-black"
-            style={{ background: '#000' }}
+            style={{
+              borderRadius: 6,
+              border: '1px solid #ccc',
+              width: 150,
+              height: 110,
+              objectFit: 'cover',
+              background: '#000',
+            }}
           />
         ) : (
-          <div className="text-xs text-gray-300">
+          <Typography variant="caption" color="grey.300" align="center">
             Camera preview unavailable<br />
-            <span className="text-[10px]">Check permissions and camera use in other apps.</span>
-          </div>
+            <span style={{ fontSize: 10 }}>Check permissions and camera use in other apps.</span>
+          </Typography>
         )}
-      </div>
-      <div className="text-[11px] text-gray-500 mt-1 text-center max-w-[150px]">
+      </Paper>
+      <Typography variant="caption" color="grey.600" align="center" sx={{ mt: 1, maxWidth: 150 }}>
         No video is recorded or transmitted. This is for exam integrity only.
-      </div>
-      {error && <div className="text-xs text-red-500 mt-1">{error}</div>}
-    </div>
+      </Typography>
+      {error && (
+        <Typography variant="caption" color="error" align="center" sx={{ mt: 1 }}>
+          {error}
+        </Typography>
+      )}
+    </Box>
   );
 };
 

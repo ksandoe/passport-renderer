@@ -1,29 +1,75 @@
 {
   "name": "passport-renderer",
-  "private": true,
   "version": "0.0.0",
+  "description": "A secure Electron app for taking proctored exams with Supabase integration.",
+  "author": "Kent Sandoe <ksandoe@live.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/ksandoe/passport-renderer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ksandoe/passport-renderer.git"
+  },
+  "private": true,
   "type": "module",
+  "main": "main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron": "electron .",
+    "dist": "electron-builder"
   },
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
     "@eslint/js": "^9.22.0",
+    "@mui/icons-material": "^7.0.2",
+    "@mui/material": "^7.0.2",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^36.1.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.22.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
+    "install": "^0.13.0",
+    "postcss": "^8.5.3",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.26.1",
     "vite": "^6.3.1"
+  },
+  "build": {
+    "appId": "com.quizmaker.passportrenderer",
+    "productName": "Passport Renderer",
+    "files": [
+      "dist/**/*",
+      "main.cjs",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
   }
 }
