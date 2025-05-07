@@ -4,6 +4,12 @@ interface ElectronAPI {
   logToFile: (msg: string) => void;
 }
 
-interface Window {
-  electronAPI: ElectronAPI;
+declare global {
+  interface Window {
+    electronAPI?: ElectronAPI;
+    INITIAL_DATA?: { token?: string };
+    require?: any;
+  }
 }
+
+export {};

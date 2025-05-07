@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
@@ -10,55 +10,49 @@ import Paper from '@mui/material/Paper';
 interface PresenceTileProps {
   onBlocked?: () => void;
   onGranted?: () => void;
-  cameraGranted?: boolean;
 }
 
-const PresenceTile: React.FC<PresenceTileProps> = ({ onBlocked, onGranted, cameraGranted }) => {
-  const [error, setError] = useState<string | null>(null);
-  const [streaming, setStreaming] = useState(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
+const PresenceTile: React.FC<PresenceTileProps> = ({ onBlocked, onGranted }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Acquire camera stream only
+  // Track if camera preview is working
+  const [previewStarted, setPreviewStarted] = useState(false);
+
   useEffect(() => {
-    let localStream: MediaStream | null = null;
-    const startCamera = async () => {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        setStream(localStream);
-        console.log('[PresenceTile] Stream received:', localStream);
-      } catch (err: any) {
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      .then(s => {
+        setStream(s);
+        if (onGranted) onGranted();
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+          videoRef.current.play().then(() => {
+            setPreviewStarted(true);
+            setError(null); // Clear any previous error
+          }).catch(err => {
+            setError('Could not start camera preview.');
+            console.error('videoRef.current.play() error:', err);
+          });
+        }
+      })
+      .catch(err => {
         setError('Camera access denied or unavailable. Presence monitoring is required.');
-        if (!cameraGranted && onBlocked) onBlocked();
+        if (onBlocked) onBlocked();
         console.error('getUserMedia error:', err);
-      }
-    };
-    startCamera();
+      });
     return () => {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
+      stream?.getTracks().forEach(track => track.stop());
     };
-  }, [cameraGranted, onBlocked]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onBlocked, onGranted]);
 
-  // Attach stream to video element when available, only if not already attached
+  // If preview starts after an initial error, clear the error message
   useEffect(() => {
-    if (videoRef.current && stream) {
-      if (videoRef.current.srcObject !== stream) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().then(() => {
-          setStreaming(true);
-          setError(null);
-          if (onGranted) onGranted();
-          console.log('[PresenceTile] Video streaming started.');
-        }).catch(err => {
-          setError('Could not start camera preview.');
-          if (!cameraGranted && onBlocked) onBlocked();
-          console.error('videoRef.current.play() error:', err);
-        });
-      }
+    if (previewStarted && error) {
+      setError(null);
     }
-  }, [stream, onGranted, onBlocked, cameraGranted]);
+  }, [previewStarted, error]);
 
   return (
     <Box display="flex" flexDirection="column" alignItems="center">
