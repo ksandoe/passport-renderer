@@ -59,25 +59,54 @@ function App() {
   // Log on every render (after state is declared)
   console.log('Render: userId=', userId, 'examId=', examId);
 
-  // --- Electron protocol handler token reception ---
+  // --- Robust token extraction logic for all launch scenarios ---
   React.useEffect(() => {
-    console.log('Token useEffect running');
-    const isElectron = !!(window && window.process && window.process.type);
-    console.log('isElectron:', isElectron, window.process);
-    if (!isElectron) return;
-    // Check for token in window.INITIAL_DATA (injected by main process)
-    if (window.INITIAL_DATA && window.INITIAL_DATA.token) {
-      console.log('Received token from window.INITIAL_DATA:', window.INITIAL_DATA.token);
-      setExamToken(window.INITIAL_DATA.token);
+    let foundToken: string | null = null;
+    // 1. Check window.INITIAL_DATA (injected by Electron main process)
+    if (typeof window !== 'undefined' && (window as any).INITIAL_DATA && (window as any).INITIAL_DATA.token) {
+      foundToken = (window as any).INITIAL_DATA.token;
+      console.log('Found token in window.INITIAL_DATA:', foundToken);
     }
-    const { ipcRenderer } = window.require ? window.require('electron') : { ipcRenderer: null };
-    if (!ipcRenderer) return;
-    const handler = (_event, token) => {
-      console.log('Received token in renderer:', token);
-      setExamToken(token);
+    // 2. Check URL params (for browser or protocol handler)
+    if (!foundToken && typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const paramToken = urlParams.get('token');
+      if (paramToken) {
+        foundToken = paramToken;
+        console.log('Found token in URL params:', foundToken);
+      }
+    }
+    // 3. Parse from protocol URL (e.g. passport://start?token=...) in window.location.href
+    if (!foundToken && typeof window !== 'undefined') {
+      const href = window.location.href;
+      const match = href.match(/[?&]token=([^&]+)/);
+      if (match && match[1]) {
+        foundToken = decodeURIComponent(match[1]);
+        console.log('Found token in protocol handler URL:', foundToken);
+      }
+    }
+    // 4. Listen for Electron IPC event (for dynamic launches)
+    let ipcCleanup: (() => void) | undefined;
+    if (typeof window !== 'undefined' && (window as any).require) {
+      const { ipcRenderer } = (window as any).require('electron');
+      if (ipcRenderer) {
+        const handler = (_event: any, token: string) => {
+          console.log('Received token in renderer via IPC:', token);
+          setExamToken(token);
+        };
+        ipcRenderer.on('exam-token', handler);
+        ipcCleanup = () => ipcRenderer.removeListener('exam-token', handler);
+      }
+    }
+    // Set state if found
+    if (foundToken) {
+      setExamToken(foundToken);
+    } else {
+      console.error('No exam token found in INITIAL_DATA, URL params, or protocol handler URL.');
+    }
+    return () => {
+      if (ipcCleanup) ipcCleanup();
     };
-    ipcRenderer.on('exam-token', handler);
-    return () => ipcRenderer.removeListener('exam-token', handler);
   }, []);
 
   // --- Use examToken to fetch userId and examId from backend when it is set ---
@@ -111,11 +140,12 @@ function App() {
           setQuestions(data.questions);
           console.log('setQuestions:', data.questions);
         }
-        // Optionally set other UI state (e.g., exam instructions, timer)
-        // if (data.duration_minutes) {
-        //   setTimer(data.duration_minutes > 0 ? data.duration_minutes * 60 : null);
-        //   console.log('setTimer:', data.duration_minutes > 0 ? data.duration_minutes * 60 : null);
-        // }
+        // Set timer if exam duration is present
+        console.log('[resolveToken] duration_minutes:', data.duration_minutes, '| Current timer:', timer);
+        if (data.duration_minutes) {
+          setTimer(data.duration_minutes > 0 ? data.duration_minutes * 60 : null);
+          console.log('[resolveToken] setTimer:', data.duration_minutes > 0 ? data.duration_minutes * 60 : null);
+        }
       } catch (err) {
         console.error('Error resolving token:', err);
         // TODO: show error to user
@@ -148,21 +178,13 @@ function App() {
           // setExam(examObj);
           console.log('Exam data:', examObj);
 
-          // Fetch questions for the exam
-          console.log('Fetching questions:', `${import.meta.env.VITE_API_BASE_URL}/questions?exam_id=${examId}`);
-          const questionsRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/questions?exam_id=${examId}`);
-          console.log('Questions fetch response:', questionsRes);
-          if (!questionsRes.ok) throw new Error('Failed to fetch questions');
-          const questionsData = await questionsRes.json();
-          console.log('Questions data:', questionsData);
-          let randomized = questionsData.questions || [];
-          // Optionally shuffle questions if needed
-          randomized = seededShuffle(randomized, hashStringToSeed(userId + examId));
-          console.log('Randomized questions:', randomized);
-          setQuestions(randomized);
-          console.log('setQuestions:', randomized);
-          // setTimer(examObj.duration_minutes > 0 ? examObj.duration_minutes * 60 : null);
-          console.log('setTimer:', examObj.duration_minutes > 0 ? examObj.duration_minutes * 60 : null);
+          // Questions are now returned from /api/exam/consume and set in resolveToken.
+          // No need to fetch questions separately here.
+          console.log('[fetchAndRandomize] duration_minutes:', examObj.duration_minutes, '| Current timer:', timer);
+          if (examObj.duration_minutes) {
+            setTimer(examObj.duration_minutes > 0 ? examObj.duration_minutes * 60 : null);
+            console.log('[fetchAndRandomize] setTimer:', examObj.duration_minutes > 0 ? examObj.duration_minutes * 60 : null);
+          }
         } catch (err: any) {
           console.error('Error in fetchAndRandomize:', err);
           setError(err.message);
@@ -175,44 +197,32 @@ function App() {
   }, [userId, examId]);
 
   useEffect(() => {
-    const checkCompleted = async () => {
-      if (userId && examId) {
-        setExamLoading(true);
-        try {
-          // Check for exam_completed event via backend
-          const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/events?user_id=${userId}&exam_id=${examId}&event_type=exam_completed`);
-          if (!res.ok) throw new Error('Failed to check completion');
-          const events = (await res.json()).events;
-          if (events && events.length > 0) {
-            setFinished(true);
-            setExamLoading(false);
-            return;
-          }
-          setExamLoading(false);
-        } catch (err: any) {
-          setError(err.message);
-          setExamLoading(false);
-        }
-      }
-    };
-    checkCompleted();
-  }, [userId, examId]);
-
-  useEffect(() => {
     // Record exam start time for duration
     if (userId && examId && examStartedAt === null) {
       setExamStartedAt(Date.now());
     }
   }, [userId, examId, examStartedAt]);
 
+  // Prevent duplicate autosubmit with a ref
+  const autoSubmitTriggered = React.useRef(false);
   useEffect(() => {
-    // Timer logic
-    if (!timer || finished || timer <= 0) return;
+    // Timer logic and autosubmit
+    if (finished) return;
+    if (timer === 0 && !autoSubmitTriggered.current) {
+      autoSubmitTriggered.current = true;
+      autoSubmit();
+      setTimeUp(true);
+      return;
+    }
+    if (!timer || timer < 0) return;
     const interval = setInterval(() => {
       setTimer(t => (t !== null ? t - 1 : null));
     }, 1000);
     return () => clearInterval(interval);
   }, [timer, finished]);
+
+  // Show exam complete message depending on how it finished
+
 
   useEffect(() => {
     // Log events
@@ -233,87 +243,62 @@ function App() {
     }
   }, [error, userId, examId]);
 
-  useEffect(() => {
-    const autoSubmit = async () => {
-      if (!userId || !examId) return;
-      try {
-        for (const q of questions) {
-          await submitAnswer({
-            user_id: userId,
-            question_id: q.question_id,
-            answer: answers[q.question_id] || '',
-          });
-        }
-        // Fetch responses to calculate score
-        const responses = await fetchResponses({ user_id: userId, exam_id: examId });
-        const score = responses.reduce((sum, r) => sum + (r.is_correct ? 1 : 0), 0);
-        const duration = examStartedAt ? Math.round((Date.now() - examStartedAt) / 1000) : null;
-        await logEvent({
+  // Auto-submit all answers and PATCH assignment with score at exam end
+  const autoSubmit = async () => {
+    if (!userId || !examId) return;
+    try {
+      for (const q of questions) {
+        await submitAnswer({
           user_id: userId,
-          exam_id: examId,
-          event_type: 'exam_completed',
-          event_data: { score, duration_seconds: duration, reason: 'timer_expired' }
+          question_id: q.question_id,
+          answer: answers[q.question_id] || '',
         });
-
-        // Update assignment score in backend
-        // First, fetch the assignment for this user/exam
-        const API_BASE_URL = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL
-          ? import.meta.env.VITE_API_BASE_URL
-          : undefined;
-        if (!API_BASE_URL) throw new Error('VITE_API_BASE_URL is not set.');
-        // Fetch assignments for user/exam
-        const assignRes = await fetch(`${API_BASE_URL}/assignments?user_id=${userId}&exam_id=${examId}`);
-        if (assignRes.ok) {
-          const assignData = await assignRes.json();
-          const assignment = assignData.assignments?.[0];
-          if (assignment && assignment.assignment_id) {
-            // Patch the assignment with the new score
-            await fetch(`${API_BASE_URL}/assignments/${assignment.assignment_id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ score }),
-            });
-          }
-        }
-
-        setFinished(true);
-      } catch (err: any) {
-        setError('Auto-submit failed: ' + err.message);
       }
-    };
-
-    const isTimedExam = timer !== null && timer > 0;
-
-    if (isTimedExam && timer === 0 && !finished) {
-      setTimeUp(true);
-      setFinished(true);
-      autoSubmit();
-    }
-  }, [timer, finished, userId, examId, questions, answers]);
-
-  useEffect(() => {
-    // Fetch exam details for timer (and optionally title/instructions)
-    if (examId && userId && timer === null) {
-      fetch(`${import.meta.env.VITE_API_BASE_URL}/exams/${examId}`)
-        .then(res => res.json())
-        .then(result => {
-          const examObj = result.exam;
-          if (examObj && examObj.duration_minutes && examObj.duration_minutes > 0) {
-            setTimer(examObj.duration_minutes * 60);
-            console.log('setTimer:', examObj.duration_minutes * 60);
+      // Fetch responses to calculate score
+      const responses = await fetchResponses({ user_id: userId, exam_id: examId });
+      const score = responses.reduce((sum, r) => sum + (r.is_correct ? 1 : 0), 0);
+      const duration = examStartedAt ? Math.round((Date.now() - examStartedAt) / 1000) : null;
+      await logEvent({
+        user_id: userId,
+        exam_id: examId,
+        event_type: 'exam_completed',
+        event_data: { score, duration_seconds: duration, reason: 'timer_expired' }
+      });
+      // Find assignment_id for this user/exam
+      const assignRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/assignments?user_id=${userId}&exam_id=${examId}`);
+      if (assignRes.ok) {
+        const assignData = await assignRes.json();
+        const assignment = assignData.assignments && assignData.assignments[0];
+        if (assignment && assignment.assignment_id) {
+          // PATCH assignment with new score (increments attempts and updates score)
+          const patchRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/assignments/${assignment.assignment_id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ score }),
+          });
+          if (patchRes.ok) {
+            const patchData = await patchRes.json();
+            console.log('[autoSubmit] assignment PATCH data:', patchData);
+          } else {
+            console.error('[autoSubmit] assignment PATCH failed:', patchRes.status, patchRes.statusText);
           }
-          // Optionally: setExamTitle(examObj.title) if you want to display the title
-        })
-        .catch(err => {
-          console.error('Failed to fetch exam for timer:', err);
-        });
+        } else {
+          console.warn('[autoSubmit] No assignment found for user/exam');
+        }
+      } else {
+        console.error('[autoSubmit] Assignments fetch failed:', assignRes.status, assignRes.statusText);
+      }
+      setFinished(true);
+    } catch (err: any) {
+      setError('Auto-submit failed: ' + err.message);
+    } finally {
+      setSaving(false);
     }
-  }, [examId, userId, timer]);
+  };
 
-  // Handlers for answers, navigation, and submit
+  // Handler for answer changes
   const handleAnswerChange = (qid: string, value: string) => {
     setAnswers(a => ({ ...a, [qid]: value }));
-    // Immediately save the answer to the backend (send only required fields)
     if (userId && examId) {
       submitAnswer({
         user_id: userId,
@@ -325,21 +310,19 @@ function App() {
     }
   };
 
-  const handleNext = () => {
-    setCurrentIndex(i => Math.min(i + 1, questions.length - 1));
-  };
-
   const handlePrev = () => {
     setCurrentIndex(i => Math.max(i - 1, 0));
   };
-
+  const handleNext = () => {
+    setCurrentIndex(i => Math.min(i + 1, questions.length - 1));
+  };
   const handleSubmitAll = async () => {
     setShowSubmitConfirm(true);
   };
-
+  const cancelSubmitAll = () => setShowSubmitConfirm(false);
   const confirmSubmitAll = async () => {
     if (!userId || !examId) return;
-    setShowSubmitConfirm(false); // Hide confirmation immediately
+    setShowSubmitConfirm(false);
     setSaving(true);
     try {
       for (const q of questions) {
@@ -357,30 +340,32 @@ function App() {
         user_id: userId,
         exam_id: examId,
         event_type: 'exam_completed',
-        event_data: { score, duration_seconds: duration }
+        event_data: { score, duration_seconds: duration, reason: 'manual_submit' }
       });
-
-      // Update assignment score in backend
-      // First, fetch the assignment for this user/exam
-      const API_BASE_URL = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL
-        ? import.meta.env.VITE_API_BASE_URL
-        : undefined;
-      if (!API_BASE_URL) throw new Error('VITE_API_BASE_URL is not set.');
-      // Fetch assignments for user/exam
-      const assignRes = await fetch(`${API_BASE_URL}/assignments?user_id=${userId}&exam_id=${examId}`);
+      // Find assignment_id for this user/exam
+      const assignRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/assignments?user_id=${userId}&exam_id=${examId}`);
       if (assignRes.ok) {
         const assignData = await assignRes.json();
-        const assignment = assignData.assignments?.[0];
+        const assignment = assignData.assignments && assignData.assignments[0];
         if (assignment && assignment.assignment_id) {
-          // Patch the assignment with the new score
-          await fetch(`${API_BASE_URL}/assignments/${assignment.assignment_id}`, {
+          // PATCH assignment with new score (increments attempts and updates score)
+          const patchRes = await fetch(`${import.meta.env.VITE_API_BASE_URL}/assignments/${assignment.assignment_id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ score }),
           });
+          if (patchRes.ok) {
+            const patchData = await patchRes.json();
+            console.log('[confirmSubmitAll] assignment PATCH data:', patchData);
+          } else {
+            console.error('[confirmSubmitAll] assignment PATCH failed:', patchRes.status, patchRes.statusText);
+          }
+        } else {
+          console.warn('[confirmSubmitAll] No assignment found for user/exam');
         }
+      } else {
+        console.error('[confirmSubmitAll] Assignments fetch failed:', assignRes.status, assignRes.statusText);
       }
-
       setFinished(true);
     } catch (err: any) {
       setError(err.message);
@@ -388,8 +373,6 @@ function App() {
       setSaving(false);
     }
   };
-
-  const cancelSubmitAll = () => setShowSubmitConfirm(false);
 
   // UI
   if (examLoading) return <Typography>Loading exam...</Typography>;
@@ -434,14 +417,21 @@ function App() {
       </Box>
     );
   }
-  if (finished) return <Alert severity="success">Exam complete! Thank you for your responses.</Alert>;
 
+  // Show exam complete message depending on how it finished (always reachable)
+  if (timeUp) {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <Alert severity="success" sx={{ fontSize: 20, fontWeight: 'bold', p: 4, borderRadius: 2 }}>
+          Time has expired and your exam has been automatically submitted. You may close the window now.
+        </Alert>
+      </Box>
+    );
+  }
+  // Debug: Log timer state on every render
   const question = questions[currentIndex];
-
-  // Timer display helper
-  const showTimer = Number.isFinite(timer) && timer !== null && timer > 0;
-  // Track if this exam is timed (duration_minutes > 0 at start)
-  const isTimedExam = timer !== null && timer > 0;
+  const isTimedExam = timer !== null;
+  console.log('[render] Timer state:', timer, '| isTimedExam:', isTimedExam);
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', bgcolor: 'grey.50' }}>
@@ -476,10 +466,17 @@ function App() {
         {warning && <Alert severity="warning" sx={{ mb: 2 }}>{warning}</Alert>}
         {/* Removed exam title per user request */}
         {/* <Typography variant="h4" fontWeight="bold" sx={{ mb: 2 }}>Exam</Typography> */}
+
         <Typography sx={{ mb: 2, fontWeight: 500 }} variant="h6">Question {currentIndex + 1} of {questions.length}</Typography>
         {question && (
           <Box sx={{ mb: 4 }}>
             <Typography sx={{ mb: 1, fontWeight: 500 }}>{question.prompt}</Typography>
+            {/* Only show the timer here, nowhere else */}
+            {isTimedExam && (
+              <Typography variant="body2" sx={{ color: '#d32f2f', fontWeight: 'bold', mb: 2 }}>
+                Time Remaining: {Math.floor(timer! / 60).toString().padStart(2, '0')}:{(timer! % 60).toString().padStart(2, '0')}
+              </Typography>
+            )}
             {/* Render image if present */}
             {question.image_url && (
               <Box sx={{ mb: 2 }}>
@@ -546,11 +543,6 @@ function App() {
             {saving ? 'Submitting...' : 'Submit All'}
           </Button>
         </Box>
-        {showTimer && (
-          <Typography sx={{ mt: 2, color: 'grey.600' }}>
-            Time Remaining: {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}
-          </Typography>
-        )}
         {timeUp && (
           <Alert severity="info" sx={{ mt: 2 }}>
             Time is up! Your answers have been submitted automatically.

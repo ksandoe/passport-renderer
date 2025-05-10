@@ -17,10 +17,10 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "electron": "electron .",
     "dist": "electron-builder"
   },
   "dependencies": {
+    "dotenv": "^16.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
