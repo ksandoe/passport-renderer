@@ -384,6 +384,15 @@ function App() {
   // UI
   if (examLoading) return <Typography>Loading exam...</Typography>;
   if (error) return <Alert severity="error">{error}</Alert>;
+  if (finished) {
+    return (
+      <Box sx={{ maxWidth: 500, margin: '0 auto', p: 4, textAlign: 'center' }}>
+        <Typography variant="h4" gutterBottom>Exam Submitted</Typography>
+        <Typography>Your exam has been submitted successfully.</Typography>
+        <Typography>You may now close this window.</Typography>
+      </Box>
+    );
+  }
   if (!userId || !examId) {
     return (
       <Box sx={{ maxWidth: 500, margin: '0 auto', p: 4, textAlign: 'center' }}>
