@@ -55,6 +55,13 @@ function App() {
     setFinished(val);
     localStorage.setItem('exam_finished', val ? 'true' : 'false');
   };
+
+  // Reset finished state when starting a new exam attempt
+  useEffect(() => {
+    if (userId && examId) {
+      markFinished(false);
+    }
+  }, [userId, examId]);
   const [timer, setTimer] = useState<number | null>(null); // seconds remaining
   const [cameraBlocked, setCameraBlocked] = useState(false);
   const [cameraGranted, setCameraGranted] = useState(false);
