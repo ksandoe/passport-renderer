@@ -47,7 +47,14 @@ function App() {
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<{ [qid: string]: string }>({});
   const [saving, setSaving] = useState(false);
-  const [finished, setFinished] = useState(false);
+  const [finished, setFinished] = useState(() => {
+    const stored = localStorage.getItem('exam_finished');
+    return stored === 'true';
+  });
+  const markFinished = (val: boolean) => {
+    setFinished(val);
+    localStorage.setItem('exam_finished', val ? 'true' : 'false');
+  };
   const [timer, setTimer] = useState<number | null>(null); // seconds remaining
   const [cameraBlocked, setCameraBlocked] = useState(false);
   const [cameraGranted, setCameraGranted] = useState(false);
@@ -288,7 +295,7 @@ function App() {
       } else {
         console.error('[autoSubmit] Assignments fetch failed:', assignRes.status, assignRes.statusText);
       }
-      setFinished(true);
+      markFinished(true);
     } catch (err: any) {
       setError('Auto-submit failed: ' + err.message);
     } finally {
@@ -366,7 +373,7 @@ function App() {
       } else {
         console.error('[confirmSubmitAll] Assignments fetch failed:', assignRes.status, assignRes.statusText);
       }
-      setFinished(true);
+      markFinished(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
