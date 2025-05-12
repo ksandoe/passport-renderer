@@ -25,16 +25,6 @@ const PresenceTile: React.FC<PresenceTileProps> = ({ onBlocked, onGranted }) => 
       .then(s => {
         setStream(s);
         if (onGranted) onGranted();
-        if (videoRef.current) {
-          videoRef.current.srcObject = s;
-          videoRef.current.play().then(() => {
-            setPreviewStarted(true);
-            setError(null); // Clear any previous error
-          }).catch(err => {
-            setError('Could not start camera preview.');
-            console.error('videoRef.current.play() error:', err);
-          });
-        }
       })
       .catch(err => {
         setError('Camera access denied or unavailable. Presence monitoring is required.');
@@ -46,6 +36,14 @@ const PresenceTile: React.FC<PresenceTileProps> = ({ onBlocked, onGranted }) => 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onBlocked, onGranted]);
+
+  // Always assign stream to video element and log assignment
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+      console.log('Assigned stream to video element:', stream);
+    }
+  }, [stream]);
 
   // If preview starts after an initial error, clear the error message
   useEffect(() => {
@@ -75,6 +73,8 @@ const PresenceTile: React.FC<PresenceTileProps> = ({ onBlocked, onGranted }) => 
             autoPlay
             muted
             playsInline
+            width={150}
+            height={110}
             style={{
               borderRadius: 6,
               border: '1px solid #ccc',
@@ -82,6 +82,22 @@ const PresenceTile: React.FC<PresenceTileProps> = ({ onBlocked, onGranted }) => 
               height: 110,
               objectFit: 'cover',
               background: '#000',
+            }}
+            onLoadedMetadata={() => {
+              if (videoRef.current) {
+                videoRef.current.play().then(() => {
+                  setPreviewStarted(true);
+                  setError(null);
+                  console.log('Video playback started.');
+                }).catch(err => {
+                  setError('Could not start camera preview.');
+                  console.error('videoRef.current.play() error:', err);
+                });
+              }
+            }}
+            onError={e => {
+              setError('Video playback error.');
+              console.error('Video element error:', e);
             }}
           />
         ) : (

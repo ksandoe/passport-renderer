@@ -51,7 +51,8 @@
     "files": [
       "dist/**/*",
       "main.cjs",
-      "package.json"
+      "package.json",
+      ".env"
     ],
     "directories": {
       "buildResources": "build"
