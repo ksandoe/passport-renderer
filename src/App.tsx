@@ -490,10 +490,19 @@ function App() {
   // Show exam complete message depending on how it finished (always reachable)
   if (timeUp) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <Alert severity="success" sx={{ fontSize: 20, fontWeight: 'bold', p: 4, borderRadius: 2, textAlign: 'center' }}>
-          Time has expired and your exam has been automatically submitted. You may close the window now.
-        </Alert>
+      <Box sx={{ minHeight: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Paper sx={{ p: 4, width: 400, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+            Time has expired
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', mt: 2 }}>
+            <CircularProgress size={48} sx={{ color: '#1976d2', mr: 2 }} />
+            <Typography variant="body1">
+              Your exam is being automatically submitted.<br />
+              Please wait while we securely submit your responses.
+            </Typography>
+          </Box>
+        </Paper>
       </Box>
     );
   }
@@ -523,7 +532,7 @@ function App() {
           mr: 4,
           mt: 4,
           height: 'calc(100vh - 32px)',
-          width: 176,
+          width: 168, // reduced from 176 to 168 for a tighter fit
           flexShrink: 0,
           background: 'transparent',
           display: 'flex',
@@ -532,7 +541,7 @@ function App() {
           justifyContent: 'center',
         }}
       >
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, width: 176, maxHeight: '100%', overflowY: 'auto' }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0.5, width: '100%', maxHeight: '100%', overflowY: 'auto', boxSizing: 'border-box' }}>
           {questions.map((q, idx) => {
             const isCurrent = idx === currentIndex;
             const isAnswered = answers[q.question_id] && answers[q.question_id].trim() !== '';
@@ -544,7 +553,7 @@ function App() {
                 key={q.question_id}
                 variant={isCurrent || isAnswered ? 'contained' : 'outlined'}
                 color={btnColor}
-                sx={{ borderRadius: '50%', minWidth: 40, minHeight: 40, fontWeight: 'bold', boxShadow: 1 }}
+                sx={{ borderRadius: '50%', minWidth: 36, minHeight: 36, fontWeight: 'bold', boxShadow: 1 }}
                 onClick={() => setCurrentIndex(idx)}
                 disabled={finished}
                 title={`Question ${idx + 1}`}
